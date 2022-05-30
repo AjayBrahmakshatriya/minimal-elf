@@ -71,24 +71,39 @@ static void create_e_ident (Elf64_Ehdr *hdr) {
 #define VADDR_START (0x400000ull)
 #define PAGE_ALIGN (4096)
 
-/* DEFAULT PROGRAM TO BE ENCODED 
-\x48\x65\x6c\x6c\x6f\x20\x57\x6f\x72\x6c\x64\x0a\xb8\x01\x00\x00\x00\xbf\x01\x00
-\x00\x00\x48\xbe\x00\x00\x00\x00\x00\x00\x00\x00\xba\x0c\x00\x00\x00\x0f\x05\xb8
-\x3c\x00\x00\x00\x48\x31\xff\x0f\x05
- ---------------------------- */
-#define DEFAULT_PROGRAM_PATCH_ADDRESS_INDEX (24)
-#define DEFAULT_PROGRAM_ENTRY_POINT (0xc)
 
+static void load_program_template(char* program_template_name, unsigned char** buff, uint32_t* size) {
+	FILE* program = fopen(program_template_name, "rb");
+	if (!program) {
+		printf("Invalid program template path\n");
+		exit(-1);
+	}
+	
+	fseek(program, 0, SEEK_END);
+	*size = ftell(program);
+	fseek(program, 0, SEEK_SET);
+	unsigned char* ptext = malloc(*size);
+	if (!ptext) {
+		printf("Malloc failed\n");
+		exit(-1);
+	}
+	fread(ptext, 1, *size, program);
+	fclose(program);
+	*buff = ptext;
+}
 
-unsigned char default_program[] = "\x48\x65\x6c\x6c\x6f\x20\x57\x6f\x72\x6c\x64\x0a\xb8\x01\x00\x00\x00\xbf\x01\x00"
-"\x00\x00\x48\xbe\x00\x00\x00\x00\x00\x00\x00\x00\xba\x0c\x00\x00\x00\x0f\x05\xb8" 
-"\x3c\x00\x00\x00\x48\x31\xff\x0f\x05";
 
 int main(int argc, char* argv[]) {
-	if (argc < 2) {
-		printf("Usage: %s <gen_file_name>\n", argv[0]);
+	if (argc < 3) {
+		printf("Usage: %s <program_template> <gen_file_name>\n", argv[0]);
 		return -1;
 	}
+
+
+	uint32_t program_size = 0;
+	unsigned char* program;
+	load_program_template(argv[1], &program, &program_size);
+
 	// Calculate file size 
 	uint32_t total_size = 0;
 	
@@ -101,7 +116,7 @@ int main(int argc, char* argv[]) {
 
 	// Actual program section
 	uint32_t program_offset = total_size;
-	total_size += sizeof(default_program);
+	total_size += program_size;
 
 
 	// Allocate a buffer 	
@@ -115,7 +130,7 @@ int main(int argc, char* argv[]) {
 	hdr->e_type = 2; // Executable
 	hdr->e_machine = 62; // AMD 64
 	hdr->e_version = 1; // Current
-	hdr->e_entry = VADDR_START + program_offset + DEFAULT_PROGRAM_ENTRY_POINT; // Entry point is start of vaddress
+	hdr->e_entry = VADDR_START + program_offset; // Entry point is start of vaddress
 	hdr->e_phoff = phoffset;
 	hdr->e_shoff = 0; // Currently unset, patch in later
 	hdr->e_flags = 0; // Processor specific, 0 for ld produced binaries
@@ -133,20 +148,17 @@ int main(int argc, char* argv[]) {
 	phdr->p_offset = program_offset; 
 	phdr->p_vaddr = VADDR_START + program_offset; // Chosen virtual address for executable
 	phdr->p_paddr = 0;
-	phdr->p_filesz = sizeof(default_program); // Size of code segment patch in later
+	phdr->p_filesz = program_size; // Size of code segment patch in later
 	phdr->p_memsz = phdr->p_filesz; // Same as the size of file
 	phdr->p_align = PAGE_ALIGN; // No alignment requirement
 	
 	
 	// Now the actual program
 	unsigned char* program_start = new_file + program_offset;
-	memcpy(program_start, default_program, sizeof(default_program));
-	// Patch in the required address
-	*(unsigned long long*)(&program_start[DEFAULT_PROGRAM_PATCH_ADDRESS_INDEX]) = VADDR_START + program_offset;
-
+	memcpy(program_start, program, program_size);
 
 	// Finally open file and write	
-	FILE* outfile = fopen(argv[1], "wb");
+	FILE* outfile = fopen(argv[2], "wb");
 	fwrite(new_file, 1, total_size, outfile);
 	fclose(outfile);
 	free(new_file);

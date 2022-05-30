@@ -1,2 +1,4 @@
 elf_gen
 program
+program.o
+program_t
