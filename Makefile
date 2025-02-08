@@ -1,15 +1,18 @@
 all: run
-build: elf_gen
 
-elf_gen: elf.c program.c
-	$(CC) -c -O3 program.c -o program.o  -fcf-protection=none
-	#$(CC) program.S -c -o program.o
-	objcopy -O binary -j .text program.o program_t
+elf_gen: elf.c
 	$(CC) elf.c -o elf_gen
 
-run: build
+program_t: program.c
+	$(CC) -c -O3 program.c -o program.o  -fcf-protection=none
+	objcopy -O binary -j .text program.o program_t
+
+program: elf_gen program_t
 	./elf_gen program_t program
 	chmod +x program
+
+.PHONY: run
+run: program
 	ls -l program
 	./program
 
