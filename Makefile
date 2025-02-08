@@ -1,8 +1,9 @@
 all: run
 build: elf_gen
 
-elf_gen: elf.c program.S
-	$(CC) program.S -c -o program.o
+elf_gen: elf.c program.c
+	$(CC) -c -O3 program.c -o program.o  -fcf-protection=none
+	#$(CC) program.S -c -o program.o
 	objcopy -O binary -j .text program.o program_t
 	$(CC) elf.c -o elf_gen
 
